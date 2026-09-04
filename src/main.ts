@@ -7,6 +7,7 @@ import { getMiniActor } from './mini-actors.js';
 import { addTimeoutToAllResponses } from './responses.js';
 import { handleSearchNormalMode } from './search.js';
 import { createServer } from './server.js';
+import { findActorTip, storeActorTip } from './tips.js';
 import type { Input } from './types.js';
 import { isActorStandby } from './utils.js';
 
@@ -66,12 +67,20 @@ if (isActorStandby()) {
         contentScraperSettings ${JSON.stringify(contentScraperSettings)}
     `);
 
+    // Normal mode only: the key-value store of a standby run belongs to the Actor, not to the caller.
+    const tip = findActorTip(input);
+    if (tip) log.info(`Tip: ${tip.message}`);
+
     let stats = { requestsFinished: 0, requestsFailed: 0 };
+    let failure: Error | undefined;
     try {
         stats = await handleSearchNormalMode(input, searchCrawlerOptions, contentCrawlerOptions, contentScraperSettings);
     } catch (e) {
-        const error = e as Error;
-        await Actor.fail(error.message as string);
+        failure = e as Error;
     }
+
+    await storeActorTip(tip);
+
+    if (failure) await Actor.fail(failure.message);
     await Actor.exit(`Finished! Scraped ${stats.requestsFinished} pages, ${stats.requestsFailed} failed.`);
 }
